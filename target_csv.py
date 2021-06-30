@@ -121,6 +121,7 @@ def persist_messages(delimiter, quotechar, messages, destination_path,
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) #NOT SECURE!
             client.connect(hostname=sftp_host,username=sftp_username,password=sftp_password)
             sftp = client.open_sftp()
+            assert len(stream_2_filenames.values())>=1
             for filename in stream_2_filenames.values():
                 sftp.put(filename,filename)
                 logger.info(f"File Name: {filename}. pushed to SFTP Site")
