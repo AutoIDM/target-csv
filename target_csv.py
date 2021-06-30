@@ -40,9 +40,8 @@ def flatten(d, parent_key='', sep='__'):
 
 
 def persist_messages(delimiter, quotechar, messages, destination_path, 
-                    fixed_headers, sftp_host, sftp_username, sftp_password, 
+                    fixed_headers, filename_include_date sftp_host, sftp_username, sftp_password, 
                     sftp_port, sftp_public_key, sftp_public_key_format):
-
     state = None
     schemas = {}
     stream_2_filenames = {}
@@ -66,8 +65,13 @@ def persist_messages(delimiter, quotechar, messages, destination_path,
 
             validators[o['stream']].validate(o['record'])
 
-            filename = o['stream'] + '-' + now + '.csv'
-            stream_2_filenames[o['stream']] = filename
+            if(filename_include_date == True):
+                filename = o['stream'] + '-' + now + '.csv'
+                stream_2_filenames[o['stream']] = filename
+            else: 
+                filename = o['stream'] + '.csv'
+                stream_2_filenames[o['stream']] = filename
+            
             filename = os.path.expanduser(os.path.join(destination_path, filename))
             file_is_empty = (not os.path.isfile(filename)) or os.stat(filename).st_size == 0
 
@@ -78,6 +82,7 @@ def persist_messages(delimiter, quotechar, messages, destination_path,
                 if o['stream'] not in headers:
                     headers[o['stream']] = fixed_headers[o['stream']]
             else:
+                #Records can come in from different streams out of order. If we already have a file written open the file back up and continue where we left off
                 if o['stream'] not in headers and not file_is_empty:
                     with open(filename, 'r') as csvfile:
                         reader = csv.reader(csvfile,
@@ -108,6 +113,12 @@ def persist_messages(delimiter, quotechar, messages, destination_path,
             schemas[stream] = o['schema']
             validators[stream] = Draft4Validator(o['schema'])
             key_properties[stream] = o['key_properties']
+            #If a stream sends its schema twice this will be an issue, but this is less likely with this usecase
+            if(filename_include_date == False):
+                filename = o['stream'] + '.csv'
+                #Highly likely this file already exists. 
+                if os.path.exists(filename):
+                    os.remove(filename)
         else:
             logger.warning("Unknown message type {} in message {}"
                             .format(o['type'], o))
@@ -176,6 +187,7 @@ def main():
                              input_messages,
                              config.get('destination_path', ''),
                              config.get('fixed_headers'),
+                             config.get('filename_include_date', True),
                              config.get('sftp_host'),
                              config.get('sftp_username'),
                              config.get('sftp_password'),
