@@ -40,7 +40,7 @@ def flatten(d, parent_key='', sep='__'):
 
 
 def persist_messages(delimiter, quotechar, messages, destination_path, 
-                    fixed_headers, filename_include_date sftp_host, sftp_username, sftp_password, 
+                    fixed_headers, filename_include_date, sftp_host, sftp_username, sftp_password, 
                     sftp_port, sftp_public_key, sftp_public_key_format):
     state = None
     schemas = {}
