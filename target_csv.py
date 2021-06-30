@@ -12,7 +12,8 @@ import urllib
 from datetime import datetime
 import collections
 import pkg_resources
-
+import fs
+import fs.sshfs
 from jsonschema.validators import Draft4Validator
 import singer
 
@@ -38,12 +39,13 @@ def flatten(d, parent_key='', sep='__'):
     return dict(items)
 
 
-def persist_messages(delimiter, quotechar, messages, destination_path, fixed_headers):
+def persist_messages(delimiter, quotechar, messages, destination_path, fixed_headers, sftp_uri):
     state = None
     schemas = {}
     key_properties = {}
     headers = {}
     validators = {}
+    print(schemas)
 
     now = datetime.now().strftime('%Y%m%dT%H%M%S')
 
@@ -105,6 +107,10 @@ def persist_messages(delimiter, quotechar, messages, destination_path, fixed_hea
         else:
             logger.warning("Unknown message type {} in message {}"
                             .format(o['type'], o))
+    if(sftp_uri):
+        print(sftp_uri)
+        with fs.open_fs(sftp_uri) as sftp:
+            print(sftp.listdir())
 
     return state
 
@@ -150,7 +156,9 @@ def main():
                              config.get('quotechar', '"'),
                              input_messages,
                              config.get('destination_path', ''),
-                             config.get('fixed_headers'))
+                             config.get('fixed_headers'),
+                             config.get('sftp_uri'),
+                             )
 
     emit_state(state)
     logger.debug("Exiting normally")
