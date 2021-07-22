@@ -1,5 +1,12 @@
 {
     "delimiter": "\t",
     "quotechar": "'",
-    "destination_path": ""
+    "destination_path": "",
+    "sftp_host": "example.com",
+    "sftp_username": "username",
+    "sftp_password": "password",
+    "sftp_port": "22",
+    "sftp_public_key": "",
+    "sftp_public_key_format": "ssh-ed25519",
+    "filename_include_date": true 
 }

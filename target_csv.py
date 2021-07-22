@@ -12,7 +12,8 @@ import urllib
 from datetime import datetime
 import collections
 import pkg_resources
-
+import paramiko
+import base64
 from jsonschema.validators import Draft4Validator
 import singer
 
@@ -38,13 +39,15 @@ def flatten(d, parent_key='', sep='__'):
     return dict(items)
 
 
-def persist_messages(delimiter, quotechar, messages, destination_path, fixed_headers):
+def persist_messages(delimiter, quotechar, messages, destination_path, 
+                    fixed_headers, filename_include_date, sftp_host, sftp_username, sftp_password, 
+                    sftp_port, sftp_public_key, sftp_public_key_format):
     state = None
     schemas = {}
+    stream_2_filenames = {}
     key_properties = {}
     headers = {}
     validators = {}
-
     now = datetime.now().strftime('%Y%m%dT%H%M%S')
 
     for message in messages:
@@ -61,8 +64,9 @@ def persist_messages(delimiter, quotechar, messages, destination_path, fixed_hea
 
             validators[o['stream']].validate(o['record'])
 
-            filename = o['stream'] + '-' + now + '.csv'
-            filename = os.path.expanduser(os.path.join(destination_path, filename))
+            filename = generate_filename(filename_include_date, destination_path, o['stream'], ".csv", now)
+            stream_2_filenames[o['stream']]=filename
+
             file_is_empty = (not os.path.isfile(filename)) or os.stat(filename).st_size == 0
 
             # flattened_record = flatten(o['record'])
@@ -72,6 +76,7 @@ def persist_messages(delimiter, quotechar, messages, destination_path, fixed_hea
                 if o['stream'] not in headers:
                     headers[o['stream']] = fixed_headers[o['stream']]
             else:
+                #Records can come in from different streams out of order. If we already have a file written open the file back up and continue where we left off
                 if o['stream'] not in headers and not file_is_empty:
                     with open(filename, 'r') as csvfile:
                         reader = csv.reader(csvfile,
@@ -82,7 +87,7 @@ def persist_messages(delimiter, quotechar, messages, destination_path, fixed_hea
                 else:
                     headers[o['stream']] = flattened_record.keys()
 
-            with open(filename, 'a') as csvfile:
+            with open(filename, 'a', newline='') as csvfile:
                 writer = csv.DictWriter(csvfile,
                                         headers[o['stream']],
                                         extrasaction='ignore',
@@ -102,12 +107,47 @@ def persist_messages(delimiter, quotechar, messages, destination_path, fixed_hea
             schemas[stream] = o['schema']
             validators[stream] = Draft4Validator(o['schema'])
             key_properties[stream] = o['key_properties']
+            #If a stream sends its schema twice this will be an issue, but this is less likely with this usecase
+            filename = generate_filename(filename_include_date, destination_path, stream, ".csv", now)
+
+            if(filename_include_date == False):
+                #Highly likely this file already exists. 
+                if os.path.exists(filename):
+                    os.remove(filename)
         else:
             logger.warning("Unknown message type {} in message {}"
                             .format(o['type'], o))
-
+    if(sftp_host and sftp_password and sftp_username and sftp_public_key and sftp_public_key_format):
+        sftp = None
+        client = None
+        try: 
+            #key = paramiko.RSAKey(data=base64.b64decode(sftp_public_key))
+            client = paramiko.SSHClient()
+            #client.get_host_keys().add(sftp_host, sftp_public_key_format, key)
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) #NOT SECURE!
+            client.connect(hostname=sftp_host,username=sftp_username,password=sftp_password)
+            sftp = client.open_sftp()
+            assert len(stream_2_filenames.values())>=1
+            for filename in stream_2_filenames.values():
+                sftp.put(filename,filename)
+                logger.info(f"File Name: {filename}. pushed to SFTP Site")
+        except Exception as e:
+            if (sftp != None): sftp.close()
+            if (client != None): client.close()
+            raise e
+        else:
+            sftp.close()
+            client.close()
     return state
 
+def generate_filename(filename_include_date, destination_path, streamname, fileending, nowdatetime):
+    if(filename_include_date == True):
+        filename = streamname + '-' + nowdatetime + fileending
+    else: 
+        filename = streamname + fileending
+    
+    filename = os.path.expanduser(os.path.join(destination_path, filename))
+    return filename
 
 def send_usage_stats():
     try:
@@ -150,7 +190,15 @@ def main():
                              config.get('quotechar', '"'),
                              input_messages,
                              config.get('destination_path', ''),
-                             config.get('fixed_headers'))
+                             config.get('fixed_headers'),
+                             config.get('filename_include_date', True),
+                             config.get('sftp_host'),
+                             config.get('sftp_username'),
+                             config.get('sftp_password'),
+                             config.get('sftp_port'),
+                             config.get('sftp_public_key'),
+                             config.get('sftp_public_key_format'),
+                             )
 
     emit_state(state)
     logger.debug("Exiting normally")
