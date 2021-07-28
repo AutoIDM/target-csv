@@ -64,8 +64,7 @@ def persist_messages(delimiter, quotechar, messages, destination_path,
 
             validators[o['stream']].validate(o['record'])
 
-            filename = generate_filename(filename_include_date, destination_path, o['stream'], ".csv", now)
-            stream_2_filenames[o['stream']]=filename
+            filename = stream_2_filenames[o['stream']] 
 
             file_is_empty = (not os.path.isfile(filename)) or os.stat(filename).st_size == 0
 
@@ -109,11 +108,12 @@ def persist_messages(delimiter, quotechar, messages, destination_path,
             key_properties[stream] = o['key_properties']
             #If a stream sends its schema twice this will be an issue, but this is less likely with this usecase
             filename = generate_filename(filename_include_date, destination_path, stream, ".csv", now)
+            stream_2_filenames[o['stream']]=filename
 
             if(filename_include_date == False):
-                #Highly likely this file already exists. 
-                if os.path.exists(filename):
-                    os.remove(filename)
+                #Highly likely this file already exists, lets be sure it's empty before we start 
+                with open(filename, 'w'): pass
+                  
         else:
             logger.warning("Unknown message type {} in message {}"
                             .format(o['type'], o))
